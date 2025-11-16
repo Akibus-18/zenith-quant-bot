@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatedBackground } from '@/components/AnimatedBackground';
 import { StatsPanel } from '@/components/StatsPanel';
 import { TradingControls } from '@/components/TradingControls';
@@ -23,6 +23,7 @@ const Index = () => {
   
   // Trading state
   const [isTrading, setIsTrading] = useState(false);
+  const isTradingRef = useRef(false);
   const [currentSignal, setCurrentSignal] = useState<any>(null);
   const [signalStatus, setSignalStatus] = useState('IDLE');
   const [config, setConfig] = useState({
@@ -113,8 +114,8 @@ const Index = () => {
         if (data.tick && data.tick.symbol === config.symbol) {
           tradingEngine.addPriceData(config.symbol, data.tick.quote);
           
-          // Check for trading signals
-          if (isTrading) {
+          // Check for trading signals - use ref to get current value
+          if (isTradingRef.current) {
             analyzeAndTrade();
           }
         }
@@ -166,6 +167,7 @@ const Index = () => {
     }
 
     setIsTrading(true);
+    isTradingRef.current = true;
     setSignalStatus('INITIALIZING');
     
     toast({
@@ -191,6 +193,7 @@ const Index = () => {
   // Stop trading
   const handleStopTrading = () => {
     setIsTrading(false);
+    isTradingRef.current = false;
     setSignalStatus('STOPPED');
     setCurrentSignal(null);
     
