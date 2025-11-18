@@ -36,6 +36,7 @@ const Index = () => {
     takeProfit: 10,
     stopLoss: 10,
     martingaleMultiplier: 1.2,
+    barrier: '5',
   });
 
   const [stats, setStats] = useState({

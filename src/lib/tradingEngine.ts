@@ -16,6 +16,7 @@ export interface TradeConfig {
   takeProfit: number;
   stopLoss: number;
   martingaleMultiplier: number;
+  barrier?: string;
 }
 
 export interface TradeSignal {
@@ -113,18 +114,49 @@ export class TradingEngine {
       }
     }
 
-    // For Over/Under contracts
+    // For Over/Under contracts - Advanced digit prediction
     else if (contractType === 'DIGITOVER' || contractType === 'DIGITUNDER') {
-      const recentPrices = prices.slice(-5);
-      const avg = recentPrices.reduce((a, b) => a + b, 0) / recentPrices.length;
-      const current = prices[prices.length - 1];
+      const recentDigits = prices.slice(-20).map(p => {
+        const priceStr = p.toFixed(2);
+        return parseInt(priceStr[priceStr.length - 1]);
+      });
       
-      if (indicators.trend === 'BULLISH') {
-        contractType = 'DIGITOVER';
-        confidence = 60;
-      } else {
-        contractType = 'DIGITUNDER';
-        confidence = 60;
+      // Calculate digit frequency distribution
+      const digitFrequency = new Array(10).fill(0);
+      recentDigits.forEach(d => digitFrequency[d]++);
+      
+      // Find hot and cold digits
+      const sortedDigits = digitFrequency
+        .map((freq, digit) => ({ digit, freq }))
+        .sort((a, b) => b.freq - a.freq);
+      
+      // Predict based on pattern analysis
+      const currentDigit = recentDigits[recentDigits.length - 1];
+      const barrier = config.barrier ? parseInt(config.barrier) : 5;
+      
+      // Advanced prediction logic
+      const highDigits = recentDigits.filter(d => d > barrier).length;
+      const lowDigits = recentDigits.filter(d => d <= barrier).length;
+      
+      // Use mean reversion + momentum
+      if (contractType === 'DIGITOVER') {
+        if (lowDigits > highDigits * 1.5) {
+          // Mean reversion: many low digits recently, expect higher
+          confidence = 65 + Math.min(15, (lowDigits - highDigits) * 2);
+        } else if (indicators.trend === 'BULLISH' && indicators.rsi > 50) {
+          confidence = 62;
+        } else {
+          confidence = 58;
+        }
+      } else { // DIGITUNDER
+        if (highDigits > lowDigits * 1.5) {
+          // Mean reversion: many high digits recently, expect lower
+          confidence = 65 + Math.min(15, (highDigits - lowDigits) * 2);
+        } else if (indicators.trend === 'BEARISH' && indicators.rsi < 50) {
+          confidence = 62;
+        } else {
+          confidence = 58;
+        }
       }
     }
 
@@ -187,9 +219,11 @@ export class TradingEngine {
         symbol: signal.symbol,
       };
 
-      // Add barriers for digit contracts if needed
-      if (signal.type === 'DIGITOVER' || signal.type === 'DIGITUNDER') {
-        params.barrier = '5'; // Default barrier for over/under
+      // Add barrier for digit contracts
+      if (signal.type === 'DIGITOVER' || signal.type === 'DIGITUNDER' || 
+          signal.type === 'DIGITMATCH' || signal.type === 'DIGITDIFF') {
+        params.barrier = config.barrier || '5';
+        console.log(`🎯 Using barrier: ${params.barrier} for ${signal.type}`);
       }
 
       const response = await derivAPI.buyContract(params);
@@ -202,7 +236,7 @@ export class TradingEngine {
           stake,
         });
 
-        console.log(`✅ Contract ${contract.contract_id} opened`);
+        console.log(`✅ Contract ${contract.contract_id} opened | Payout: $${contract.payout}`);
         this.startCooldown(15000); // 15 second cooldown
       }
     } catch (error: any) {
