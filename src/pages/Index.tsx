@@ -3,6 +3,7 @@ import { AnimatedBackground } from '@/components/AnimatedBackground';
 import { StatsPanel } from '@/components/StatsPanel';
 import { TradingControls } from '@/components/TradingControls';
 import { SignalDisplay } from '@/components/SignalDisplay';
+import { DecisionPanel } from '@/components/DecisionPanel';
 import { TradeHistory } from '@/components/TradeHistory';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -321,8 +322,13 @@ const Index = () => {
                 />
               </div>
               
-              <div>
+              <div className="space-y-6">
                 <SignalDisplay signal={currentSignal} status={signalStatus} />
+                <DecisionPanel 
+                  isTrading={isTrading} 
+                  signalStatus={signalStatus} 
+                  hasSignal={currentSignal !== null} 
+                />
               </div>
             </div>
 
