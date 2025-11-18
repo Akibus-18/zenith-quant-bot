@@ -63,7 +63,77 @@ export class TradingEngine {
     }
   }
 
-  // Analyze market and generate signal
+  // Enhanced pattern recognition
+  private detectSupportResistance(prices: number[]): { support: number; resistance: number } {
+    const recentPrices = prices.slice(-50);
+    const sorted = [...recentPrices].sort((a, b) => a - b);
+    
+    // Support: price levels where price bounces up
+    const support = sorted[Math.floor(sorted.length * 0.2)];
+    
+    // Resistance: price levels where price bounces down
+    const resistance = sorted[Math.floor(sorted.length * 0.8)];
+    
+    return { support, resistance };
+  }
+
+  private calculateVolatility(prices: number[]): number {
+    const returns = [];
+    for (let i = 1; i < prices.length; i++) {
+      returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+    }
+    
+    const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+    
+    return Math.sqrt(variance);
+  }
+
+  private detectPattern(prices: number[]): { pattern: string; strength: number } {
+    const recent = prices.slice(-20);
+    
+    // Detect higher highs and higher lows (uptrend)
+    let higherHighs = 0;
+    let higherLows = 0;
+    
+    for (let i = 4; i < recent.length; i += 4) {
+      const prevHigh = Math.max(...recent.slice(i - 4, i));
+      const currHigh = Math.max(...recent.slice(i, Math.min(i + 4, recent.length)));
+      
+      const prevLow = Math.min(...recent.slice(i - 4, i));
+      const currLow = Math.min(...recent.slice(i, Math.min(i + 4, recent.length)));
+      
+      if (currHigh > prevHigh) higherHighs++;
+      if (currLow > prevLow) higherLows++;
+    }
+    
+    if (higherHighs >= 3 && higherLows >= 2) {
+      return { pattern: 'STRONG_UPTREND', strength: 85 };
+    }
+    
+    // Detect lower highs and lower lows (downtrend)
+    let lowerHighs = 0;
+    let lowerLows = 0;
+    
+    for (let i = 4; i < recent.length; i += 4) {
+      const prevHigh = Math.max(...recent.slice(i - 4, i));
+      const currHigh = Math.max(...recent.slice(i, Math.min(i + 4, recent.length)));
+      
+      const prevLow = Math.min(...recent.slice(i - 4, i));
+      const currLow = Math.min(...recent.slice(i, Math.min(i + 4, recent.length)));
+      
+      if (currHigh < prevHigh) lowerHighs++;
+      if (currLow < prevLow) lowerLows++;
+    }
+    
+    if (lowerHighs >= 3 && lowerLows >= 2) {
+      return { pattern: 'STRONG_DOWNTREND', strength: 85 };
+    }
+    
+    return { pattern: 'RANGING', strength: 50 };
+  }
+
+  // Analyze market and generate signal with enhanced AI
   generateSignal(symbol: string, config: TradeConfig): TradeSignal | null {
     const prices = this.priceHistory.get(symbol);
 
@@ -74,108 +144,171 @@ export class TradingEngine {
 
     // Analyze indicators
     const indicators = TradingIndicators.analyzeMarket(prices);
+    
+    // Enhanced pattern detection
+    const { support, resistance } = this.detectSupportResistance(prices);
+    const volatility = this.calculateVolatility(prices);
+    const { pattern, strength: patternStrength } = this.detectPattern(prices);
+    
+    const currentPrice = prices[prices.length - 1];
 
     // Determine contract type based on indicators
     let contractType = config.contractType;
     let confidence = 0;
 
-    // For Rise/Fall contracts
+    // For Rise/Fall contracts - Enhanced with pattern recognition
     if (contractType === 'CALL' || contractType === 'PUT') {
       const bullishScore = TradingIndicators.calculateConfidence(indicators, 'CALL');
       const bearishScore = TradingIndicators.calculateConfidence(indicators, 'PUT');
+      
+      // Enhance with pattern analysis
+      let patternBonus = 0;
+      if (pattern === 'STRONG_UPTREND') {
+        patternBonus = patternStrength * 0.15; // Up to +12.75% for bullish
+      } else if (pattern === 'STRONG_DOWNTREND') {
+        patternBonus = -patternStrength * 0.15; // Up to -12.75% for bearish
+      }
+      
+      // Support/Resistance bonus
+      const distanceToSupport = (currentPrice - support) / support;
+      const distanceToResistance = (resistance - currentPrice) / currentPrice;
+      
+      let srBonus = 0;
+      if (distanceToSupport < 0.005) { // Near support, likely to bounce up
+        srBonus = 8;
+      } else if (distanceToResistance < 0.005) { // Near resistance, likely to bounce down
+        srBonus = -8;
+      }
 
-      if (bullishScore > bearishScore) {
+      const adjustedBullish = bullishScore + patternBonus + srBonus;
+      const adjustedBearish = bearishScore - patternBonus - srBonus;
+
+      if (adjustedBullish > adjustedBearish && adjustedBullish >= 60) {
         contractType = 'CALL';
-        confidence = bullishScore;
-      } else {
+        confidence = Math.min(95, adjustedBullish);
+      } else if (adjustedBearish >= 60) {
         contractType = 'PUT';
-        confidence = bearishScore;
+        confidence = Math.min(95, adjustedBearish);
+      } else {
+        return null; // Not confident enough
       }
     }
 
-    // For Even/Odd contracts
+    // For Even/Odd contracts - Enhanced pattern analysis
     else if (contractType === 'DIGITEVEN' || contractType === 'DIGITODD') {
-      const currentPrice = prices[prices.length - 1];
-      const lastDigit = Math.floor((currentPrice * 100) % 10);
-      
-      // Pattern analysis for digit prediction
-      const recentDigits = prices.slice(-10).map(p => Math.floor((p * 100) % 10));
+      const recentDigits = prices.slice(-30).map(p => Math.floor((p * 100) % 10));
       const evenCount = recentDigits.filter(d => d % 2 === 0).length;
       
-      if (evenCount > 6) {
-        contractType = 'DIGITODD'; // Contrarian approach
-        confidence = 55 + (evenCount - 6) * 5;
-      } else if (evenCount < 4) {
+      // Pattern detection: streaks
+      let currentStreak = 1;
+      for (let i = recentDigits.length - 1; i > 0; i--) {
+        if ((recentDigits[i] % 2) === (recentDigits[i - 1] % 2)) {
+          currentStreak++;
+        } else {
+          break;
+        }
+      }
+      
+      // Mean reversion after long streaks
+      if (evenCount > 20) {
+        contractType = 'DIGITODD';
+        confidence = 60 + Math.min(25, (evenCount - 20) * 3);
+      } else if (evenCount < 10) {
         contractType = 'DIGITEVEN';
-        confidence = 55 + (4 - evenCount) * 5;
-      } else {
+        confidence = 60 + Math.min(25, (10 - evenCount) * 3);
+      } else if (currentStreak >= 5) {
+        // Reverse after long streak
+        const lastDigit = recentDigits[recentDigits.length - 1];
         contractType = lastDigit % 2 === 0 ? 'DIGITODD' : 'DIGITEVEN';
-        confidence = 52;
+        confidence = 55 + currentStreak * 3;
+      } else {
+        return null; // No clear pattern
       }
     }
 
-    // For Over/Under contracts - Advanced digit prediction
+    // For Over/Under contracts - Advanced digit prediction with volatility
     else if (contractType === 'DIGITOVER' || contractType === 'DIGITUNDER') {
-      const recentDigits = prices.slice(-20).map(p => {
-        const priceStr = p.toFixed(2);
+      const recentDigits = prices.slice(-40).map(p => {
+        const priceStr = p.toFixed(5);
         return parseInt(priceStr[priceStr.length - 1]);
       });
       
-      // Calculate digit frequency distribution
+      const barrier = config.barrier ? parseInt(config.barrier) : 5;
+      
+      // Frequency analysis
       const digitFrequency = new Array(10).fill(0);
       recentDigits.forEach(d => digitFrequency[d]++);
       
-      // Find hot and cold digits
-      const sortedDigits = digitFrequency
-        .map((freq, digit) => ({ digit, freq }))
-        .sort((a, b) => b.freq - a.freq);
+      // Recent trend
+      const recentHigh = recentDigits.slice(-10).filter(d => d > barrier).length;
+      const recentLow = recentDigits.slice(-10).filter(d => d <= barrier).length;
       
-      // Predict based on pattern analysis
-      const currentDigit = recentDigits[recentDigits.length - 1];
-      const barrier = config.barrier ? parseInt(config.barrier) : 5;
+      // Overall distribution
+      const overallHigh = recentDigits.filter(d => d > barrier).length;
+      const overallLow = recentDigits.filter(d => d <= barrier).length;
       
-      // Advanced prediction logic
-      const highDigits = recentDigits.filter(d => d > barrier).length;
-      const lowDigits = recentDigits.filter(d => d <= barrier).length;
+      // Volatility factor
+      const volatilityFactor = volatility > 0.01 ? 1.1 : 0.9;
       
-      // Use mean reversion + momentum
       if (contractType === 'DIGITOVER') {
-        if (lowDigits > highDigits * 1.5) {
-          // Mean reversion: many low digits recently, expect higher
-          confidence = 65 + Math.min(15, (lowDigits - highDigits) * 2);
-        } else if (indicators.trend === 'BULLISH' && indicators.rsi > 50) {
-          confidence = 62;
-        } else {
-          confidence = 58;
+        // Mean reversion: if many low digits, expect high
+        if (recentLow > recentHigh * 1.8) {
+          confidence = 65 + Math.min(20, (recentLow - recentHigh) * 3);
+          confidence *= volatilityFactor;
+        } 
+        // Momentum: if trending high with bullish indicators
+        else if (recentHigh > recentLow && indicators.trend === 'BULLISH' && indicators.rsi > 55) {
+          confidence = 68 + (indicators.rsi - 55) * 0.5;
+        }
+        // Pattern analysis
+        else if (overallLow > overallHigh * 1.5) {
+          confidence = 62 + Math.min(15, (overallLow - overallHigh) * 2);
+        }
+        else {
+          return null;
         }
       } else { // DIGITUNDER
-        if (highDigits > lowDigits * 1.5) {
-          // Mean reversion: many high digits recently, expect lower
-          confidence = 65 + Math.min(15, (highDigits - lowDigits) * 2);
-        } else if (indicators.trend === 'BEARISH' && indicators.rsi < 50) {
-          confidence = 62;
-        } else {
-          confidence = 58;
+        if (recentHigh > recentLow * 1.8) {
+          confidence = 65 + Math.min(20, (recentHigh - recentLow) * 3);
+          confidence *= volatilityFactor;
+        }
+        else if (recentLow > recentHigh && indicators.trend === 'BEARISH' && indicators.rsi < 45) {
+          confidence = 68 + (45 - indicators.rsi) * 0.5;
+        }
+        else if (overallHigh > overallLow * 1.5) {
+          confidence = 62 + Math.min(15, (overallHigh - overallLow) * 2);
+        }
+        else {
+          return null;
         }
       }
+      
+      confidence = Math.min(95, confidence);
     }
 
     // For Matches/Differs contracts
     else if (contractType === 'DIGITMATCH' || contractType === 'DIGITDIFF') {
-      const currentPrice = prices[prices.length - 1];
-      const lastDigit = Math.floor((currentPrice * 100) % 10);
-      const recentDigits = prices.slice(-20).map(p => Math.floor((p * 100) % 10));
+      const recentDigits = prices.slice(-30).map(p => Math.floor((p * 100) % 10));
+      const targetDigit = parseInt(config.barrier || '5');
       
-      const digitFrequency = recentDigits.filter(d => d === lastDigit).length;
+      const digitAppearances = recentDigits.filter(d => d === targetDigit).length;
+      const recentAppearances = recentDigits.slice(-10).filter(d => d === targetDigit).length;
       
-      // If digit appears frequently, expect difference
-      if (digitFrequency > 5) {
+      // Mean reversion
+      if (recentAppearances >= 4) {
         contractType = 'DIGITDIFF';
-        confidence = 55 + digitFrequency;
-      } else {
+        confidence = 62 + recentAppearances * 4;
+      } else if (digitAppearances > 8) {
+        contractType = 'DIGITDIFF';
+        confidence = 58 + digitAppearances * 2;
+      } else if (recentAppearances === 0 && digitAppearances < 2) {
         contractType = 'DIGITMATCH';
-        confidence = 50 + (5 - digitFrequency);
+        confidence = 60 + (2 - digitAppearances) * 5;
+      } else {
+        return null;
       }
+      
+      confidence = Math.min(95, confidence);
     }
 
     // Check confidence threshold
@@ -205,6 +338,9 @@ export class TradingEngine {
       stake = config.stake * Math.pow(config.martingaleMultiplier, this.consecutiveLosses);
       stake = Math.min(stake, config.stake * 5); // Cap at 5x
     }
+    
+    // CRITICAL: Round to 2 decimal places to avoid API rejection
+    stake = Math.round(stake * 100) / 100;
 
     console.log(`⚡ Executing ${signal.type} on ${signal.symbol} | Stake: $${stake.toFixed(2)} | Confidence: ${signal.confidence.toFixed(0)}%`);
 
