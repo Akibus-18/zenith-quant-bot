@@ -16,6 +16,7 @@ interface TradingControlsProps {
     takeProfit: number;
     stopLoss: number;
     martingaleMultiplier: number;
+    barrier?: string;
   };
   onConfigChange: (config: any) => void;
   onStart: () => void;
@@ -76,6 +77,49 @@ export const TradingControls = ({
             </SelectContent>
           </Select>
         </div>
+
+        {(config.contractType === 'DIGITOVER' || config.contractType === 'DIGITUNDER') && (
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-muted-foreground">
+              {config.contractType === 'DIGITOVER' ? 'DIGIT OVER' : 'DIGIT UNDER'}
+            </Label>
+            <Select 
+              value={config.barrier || '5'} 
+              onValueChange={(value) => onConfigChange({ ...config, barrier: value })}
+            >
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Select digit" />
+              </SelectTrigger>
+              <SelectContent>
+                {config.contractType === 'DIGITOVER' ? (
+                  <>
+                    <SelectItem value="0">Over 0</SelectItem>
+                    <SelectItem value="1">Over 1</SelectItem>
+                    <SelectItem value="2">Over 2</SelectItem>
+                    <SelectItem value="3">Over 3</SelectItem>
+                    <SelectItem value="4">Over 4</SelectItem>
+                    <SelectItem value="5">Over 5</SelectItem>
+                    <SelectItem value="6">Over 6</SelectItem>
+                    <SelectItem value="7">Over 7</SelectItem>
+                    <SelectItem value="8">Over 8</SelectItem>
+                  </>
+                ) : (
+                  <>
+                    <SelectItem value="1">Under 1</SelectItem>
+                    <SelectItem value="2">Under 2</SelectItem>
+                    <SelectItem value="3">Under 3</SelectItem>
+                    <SelectItem value="4">Under 4</SelectItem>
+                    <SelectItem value="5">Under 5</SelectItem>
+                    <SelectItem value="6">Under 6</SelectItem>
+                    <SelectItem value="7">Under 7</SelectItem>
+                    <SelectItem value="8">Under 8</SelectItem>
+                    <SelectItem value="9">Under 9</SelectItem>
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label className="text-sm font-medium text-muted-foreground">STAKE (USD)</Label>

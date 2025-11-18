@@ -163,10 +163,39 @@ export class DerivWebSocket {
     barrier?: string;
     barrier2?: string;
   }) {
+    // First, get a proposal
+    const proposalParams: any = {
+      proposal: 1,
+      amount: params.amount,
+      basis: params.basis,
+      contract_type: params.contract_type,
+      currency: params.currency,
+      duration: params.duration,
+      duration_unit: params.duration_unit,
+      symbol: params.symbol,
+    };
+
+    // Add barrier if provided
+    if (params.barrier) {
+      proposalParams.barrier = params.barrier;
+    }
+    if (params.barrier2) {
+      proposalParams.barrier2 = params.barrier2;
+    }
+
+    console.log('📋 Getting proposal:', proposalParams);
+    const proposal = await this.send(proposalParams);
+
+    if (!proposal || !proposal.proposal || !proposal.proposal.id) {
+      throw new Error('Failed to get proposal: ' + JSON.stringify(proposal.error || 'Unknown error'));
+    }
+
+    console.log('💰 Proposal received:', proposal.proposal.id, 'Ask Price:', proposal.proposal.ask_price);
+
+    // Buy the contract using the proposal ID
     return this.send({
-      buy: 1,
-      price: params.amount,
-      parameters: params,
+      buy: proposal.proposal.id,
+      price: proposal.proposal.ask_price,
       subscribe: 1,
     });
   }
