@@ -154,7 +154,38 @@ export const TradingControls = ({
             value={config.confidenceThreshold}
             onChange={(e) => onConfigChange({ ...config, confidenceThreshold: parseInt(e.target.value) })}
             className="bg-input border-border"
+            disabled={isTrading}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-muted-foreground">TAKE PROFIT ($)</Label>
+          <Input
+            type="number"
+            step="1"
+            min="0"
+            value={config.takeProfit}
+            onChange={(e) => onConfigChange({ ...config, takeProfit: parseFloat(e.target.value) || 0 })}
+            className="bg-input border-border"
+            placeholder="e.g., 20"
+            disabled={isTrading}
+          />
+          <p className="text-xs text-muted-foreground">Bot stops when profit reaches this amount</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-muted-foreground">STOP LOSS ($)</Label>
+          <Input
+            type="number"
+            step="1"
+            min="0"
+            value={config.stopLoss}
+            onChange={(e) => onConfigChange({ ...config, stopLoss: parseFloat(e.target.value) || 0 })}
+            className="bg-input border-border"
+            placeholder="e.g., 20"
+            disabled={isTrading}
+          />
+          <p className="text-xs text-muted-foreground">Bot stops when loss reaches this amount</p>
         </div>
 
         <div className="space-y-2">
@@ -167,6 +198,7 @@ export const TradingControls = ({
             value={config.martingaleMultiplier}
             onChange={(e) => onConfigChange({ ...config, martingaleMultiplier: parseFloat(e.target.value) })}
             className="bg-input border-border"
+            disabled={isTrading}
           />
         </div>
       </div>

@@ -39,27 +39,39 @@ export interface TradeResult {
 
 export class TradingEngine {
   private priceHistory: Map<string, number[]> = new Map();
+  private digitHistory: Map<string, number[]> = new Map(); // Track last digits
   private activeContracts: Map<string, any> = new Map();
   private tradeHistory: TradeResult[] = [];
   private isTrading: boolean = false;
   private cooldownActive: boolean = false;
   private lastTrade: number = 0;
   private consecutiveLosses: number = 0;
+  private sessionProfit: number = 0;
+  private sessionLoss: number = 0;
 
   constructor() {}
 
-  // Add price data
+  // Add price data and track digits
   addPriceData(symbol: string, price: number) {
     if (!this.priceHistory.has(symbol)) {
       this.priceHistory.set(symbol, []);
+      this.digitHistory.set(symbol, []);
     }
 
     const history = this.priceHistory.get(symbol)!;
+    const digits = this.digitHistory.get(symbol)!;
+    
     history.push(price);
+    
+    // Extract last digit for digit analysis
+    const priceStr = price.toFixed(5);
+    const lastDigit = parseInt(priceStr[priceStr.length - 1]);
+    digits.push(lastDigit);
 
-    // Keep last 100 prices
+    // Keep last 100 prices and digits
     if (history.length > 100) {
       history.shift();
+      digits.shift();
     }
   }
 
@@ -87,6 +99,56 @@ export class TradingEngine {
     const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
     
     return Math.sqrt(variance);
+  }
+
+  // Advanced digit frequency analysis (from digitsanalyzer.com)
+  private analyzeDigitFrequency(digits: number[]): {
+    frequency: number[];
+    hotDigits: number[];
+    coldDigits: number[];
+    evenOddRatio: number;
+    prediction: { digit: number; confidence: number; reason: string } | null;
+  } {
+    const frequency = new Array(10).fill(0);
+    digits.forEach(d => frequency[d]++);
+    
+    const avgFrequency = digits.length / 10;
+    const hotDigits = frequency
+      .map((count, digit) => ({ digit, count }))
+      .filter(d => d.count > avgFrequency * 1.3)
+      .map(d => d.digit);
+      
+    const coldDigits = frequency
+      .map((count, digit) => ({ digit, count }))
+      .filter(d => d.count < avgFrequency * 0.7)
+      .map(d => d.digit);
+    
+    const evenCount = digits.filter(d => d % 2 === 0).length;
+    const evenOddRatio = evenCount / digits.length;
+    
+    // Mean reversion strategy: predict cold digits are "due"
+    let prediction = null;
+    if (coldDigits.length > 0) {
+      const coldestDigit = frequency
+        .map((count, digit) => ({ digit, count }))
+        .sort((a, b) => a.count - b.count)[0];
+      
+      const hottestDigit = frequency
+        .map((count, digit) => ({ digit, count }))
+        .sort((a, b) => b.count - a.count)[0];
+      
+      const imbalance = hottestDigit.count - coldestDigit.count;
+      if (imbalance >= 3) {
+        const confidence = Math.min(85, 55 + imbalance * 5);
+        prediction = {
+          digit: coldestDigit.digit,
+          confidence,
+          reason: `Digit ${coldestDigit.digit} is due (${coldestDigit.count} vs ${hottestDigit.count} for digit ${hottestDigit.digit})`
+        };
+      }
+    }
+    
+    return { frequency, hotDigits, coldDigits, evenOddRatio, prediction };
   }
 
   private detectPattern(prices: number[]): { pattern: string; strength: number } {
@@ -194,89 +256,122 @@ export class TradingEngine {
       }
     }
 
-    // For Even/Odd contracts - Enhanced pattern analysis
+    // For Even/Odd contracts - Enhanced with digit frequency analysis
     else if (contractType === 'DIGITEVEN' || contractType === 'DIGITODD') {
-      const recentDigits = prices.slice(-30).map(p => Math.floor((p * 100) % 10));
-      const evenCount = recentDigits.filter(d => d % 2 === 0).length;
+      const digits = this.digitHistory.get(symbol) || [];
+      if (digits.length < 30) return null;
       
-      // Pattern detection: streaks
+      const recentDigits = digits.slice(-40);
+      const digitAnalysis = this.analyzeDigitFrequency(recentDigits);
+      
+      const evenCount = recentDigits.filter(d => d % 2 === 0).length;
+      const recentEvenCount = recentDigits.slice(-10).filter(d => d % 2 === 0).length;
+      
+      // Detect current streak
       let currentStreak = 1;
-      for (let i = recentDigits.length - 1; i > 0; i--) {
-        if ((recentDigits[i] % 2) === (recentDigits[i - 1] % 2)) {
+      const lastParity = recentDigits[recentDigits.length - 1] % 2;
+      for (let i = recentDigits.length - 2; i >= 0; i--) {
+        if ((recentDigits[i] % 2) === lastParity) {
           currentStreak++;
         } else {
           break;
         }
       }
       
-      // Mean reversion after long streaks
-      if (evenCount > 20) {
+      // Mean reversion strategy (like digitsanalyzer.com)
+      if (evenCount > 26) { // >65% even
         contractType = 'DIGITODD';
-        confidence = 60 + Math.min(25, (evenCount - 20) * 3);
-      } else if (evenCount < 10) {
+        confidence = 65 + Math.min(25, (evenCount - 26) * 4);
+      } else if (evenCount < 14) { // <35% even
         contractType = 'DIGITEVEN';
-        confidence = 60 + Math.min(25, (10 - evenCount) * 3);
-      } else if (currentStreak >= 5) {
-        // Reverse after long streak
-        const lastDigit = recentDigits[recentDigits.length - 1];
-        contractType = lastDigit % 2 === 0 ? 'DIGITODD' : 'DIGITEVEN';
-        confidence = 55 + currentStreak * 3;
+        confidence = 65 + Math.min(25, (14 - evenCount) * 4);
+      } else if (currentStreak >= 6) {
+        // Strong reversal signal after long streak
+        contractType = lastParity === 0 ? 'DIGITODD' : 'DIGITEVEN';
+        confidence = 62 + currentStreak * 4;
+      } else if (recentEvenCount >= 8) {
+        contractType = 'DIGITODD';
+        confidence = 68 + (recentEvenCount - 8) * 3;
+      } else if (recentEvenCount <= 2) {
+        contractType = 'DIGITEVEN';
+        confidence = 68 + (2 - recentEvenCount) * 3;
       } else {
         return null; // No clear pattern
       }
     }
 
-    // For Over/Under contracts - Advanced digit prediction with volatility
+    // For Over/Under contracts - Enhanced with digitsanalyzer.com strategy
     else if (contractType === 'DIGITOVER' || contractType === 'DIGITUNDER') {
-      const recentDigits = prices.slice(-40).map(p => {
-        const priceStr = p.toFixed(5);
-        return parseInt(priceStr[priceStr.length - 1]);
-      });
+      const digits = this.digitHistory.get(symbol) || [];
+      if (digits.length < 40) return null;
       
+      const recentDigits = digits.slice(-50);
       const barrier = config.barrier ? parseInt(config.barrier) : 5;
       
-      // Frequency analysis
-      const digitFrequency = new Array(10).fill(0);
-      recentDigits.forEach(d => digitFrequency[d]++);
+      // Advanced digit frequency analysis
+      const digitAnalysis = this.analyzeDigitFrequency(recentDigits);
       
-      // Recent trend
-      const recentHigh = recentDigits.slice(-10).filter(d => d > barrier).length;
-      const recentLow = recentDigits.slice(-10).filter(d => d <= barrier).length;
-      
-      // Overall distribution
+      // Recent vs overall distribution
+      const recentHigh = recentDigits.slice(-15).filter(d => d > barrier).length;
+      const recentLow = recentDigits.slice(-15).filter(d => d <= barrier).length;
       const overallHigh = recentDigits.filter(d => d > barrier).length;
       const overallLow = recentDigits.filter(d => d <= barrier).length;
       
+      // Detect streaks
+      let streakCount = 1;
+      const lastIsHigh = recentDigits[recentDigits.length - 1] > barrier;
+      for (let i = recentDigits.length - 2; i >= 0; i--) {
+        if ((recentDigits[i] > barrier) === lastIsHigh) {
+          streakCount++;
+        } else {
+          break;
+        }
+      }
+      
       // Volatility factor
-      const volatilityFactor = volatility > 0.01 ? 1.1 : 0.9;
+      const volatilityFactor = volatility > 0.01 ? 1.08 : 0.95;
       
       if (contractType === 'DIGITOVER') {
-        // Mean reversion: if many low digits, expect high
-        if (recentLow > recentHigh * 1.8) {
-          confidence = 65 + Math.min(20, (recentLow - recentHigh) * 3);
+        // Strong mean reversion signal
+        if (recentLow > recentHigh * 2.0) {
+          confidence = 70 + Math.min(22, (recentLow - recentHigh) * 3.5);
           confidence *= volatilityFactor;
-        } 
-        // Momentum: if trending high with bullish indicators
-        else if (recentHigh > recentLow && indicators.trend === 'BULLISH' && indicators.rsi > 55) {
-          confidence = 68 + (indicators.rsi - 55) * 0.5;
         }
-        // Pattern analysis
-        else if (overallLow > overallHigh * 1.5) {
-          confidence = 62 + Math.min(15, (overallLow - overallHigh) * 2);
+        // Streak reversal
+        else if (streakCount >= 7 && !lastIsHigh) {
+          confidence = 68 + streakCount * 3;
+        }
+        // Overall distribution imbalance
+        else if (overallLow > overallHigh * 1.6) {
+          confidence = 66 + Math.min(20, (overallLow - overallHigh) * 2.5);
+        }
+        // Momentum + trend alignment
+        else if (recentHigh > recentLow && indicators.trend === 'BULLISH' && indicators.rsi > 58) {
+          confidence = 70 + (indicators.rsi - 58) * 0.6;
+        }
+        // Hot digit prediction from frequency analysis
+        else if (digitAnalysis.prediction && digitAnalysis.prediction.digit > barrier) {
+          confidence = digitAnalysis.prediction.confidence;
         }
         else {
           return null;
         }
       } else { // DIGITUNDER
-        if (recentHigh > recentLow * 1.8) {
-          confidence = 65 + Math.min(20, (recentHigh - recentLow) * 3);
+        if (recentHigh > recentLow * 2.0) {
+          confidence = 70 + Math.min(22, (recentHigh - recentLow) * 3.5);
           confidence *= volatilityFactor;
         }
-        else if (recentLow > recentHigh && indicators.trend === 'BEARISH' && indicators.rsi < 45) {
-          confidence = 68 + (45 - indicators.rsi) * 0.5;
+        else if (streakCount >= 7 && lastIsHigh) {
+          confidence = 68 + streakCount * 3;
         }
-        else if (overallHigh > overallLow * 1.5) {
-          confidence = 62 + Math.min(15, (overallHigh - overallLow) * 2);
+        else if (overallHigh > overallLow * 1.6) {
+          confidence = 66 + Math.min(20, (overallHigh - overallLow) * 2.5);
+        }
+        else if (recentLow > recentHigh && indicators.trend === 'BEARISH' && indicators.rsi < 42) {
+          confidence = 70 + (42 - indicators.rsi) * 0.6;
+        }
+        else if (digitAnalysis.prediction && digitAnalysis.prediction.digit <= barrier) {
+          confidence = digitAnalysis.prediction.confidence;
         }
         else {
           return null;
@@ -286,24 +381,44 @@ export class TradingEngine {
       confidence = Math.min(95, confidence);
     }
 
-    // For Matches/Differs contracts
+    // For Matches/Differs contracts - Enhanced with frequency analysis
     else if (contractType === 'DIGITMATCH' || contractType === 'DIGITDIFF') {
-      const recentDigits = prices.slice(-30).map(p => Math.floor((p * 100) % 10));
+      const digits = this.digitHistory.get(symbol) || [];
+      if (digits.length < 30) return null;
+      
+      const recentDigits = digits.slice(-40);
       const targetDigit = parseInt(config.barrier || '5');
       
-      const digitAppearances = recentDigits.filter(d => d === targetDigit).length;
-      const recentAppearances = recentDigits.slice(-10).filter(d => d === targetDigit).length;
+      const digitAnalysis = this.analyzeDigitFrequency(recentDigits);
+      const targetFrequency = digitAnalysis.frequency[targetDigit];
+      const avgFrequency = recentDigits.length / 10;
       
-      // Mean reversion
-      if (recentAppearances >= 4) {
+      const recentAppearances = recentDigits.slice(-12).filter(d => d === targetDigit).length;
+      
+      // Enhanced mean reversion strategy
+      const isHot = targetFrequency > avgFrequency * 1.4;
+      const isCold = targetFrequency < avgFrequency * 0.6;
+      
+      if (recentAppearances >= 5) {
+        // Target appeared too much recently
         contractType = 'DIGITDIFF';
-        confidence = 62 + recentAppearances * 4;
-      } else if (digitAppearances > 8) {
+        confidence = 68 + recentAppearances * 3.5;
+      } else if (isHot && recentAppearances >= 3) {
+        // Hot digit, many recent appearances
         contractType = 'DIGITDIFF';
-        confidence = 58 + digitAppearances * 2;
-      } else if (recentAppearances === 0 && digitAppearances < 2) {
+        confidence = 65 + (targetFrequency - avgFrequency) * 8;
+      } else if (isCold && recentAppearances === 0) {
+        // Cold digit is due
         contractType = 'DIGITMATCH';
-        confidence = 60 + (2 - digitAppearances) * 5;
+        confidence = 66 + (avgFrequency - targetFrequency) * 8;
+      } else if (recentAppearances === 0 && targetFrequency < 3) {
+        // Hasn't appeared recently and overall rare
+        contractType = 'DIGITMATCH';
+        confidence = 64 + (3 - targetFrequency) * 6;
+      } else if (digitAnalysis.prediction && digitAnalysis.prediction.digit === targetDigit) {
+        // AI predicts this digit
+        contractType = 'DIGITMATCH';
+        confidence = digitAnalysis.prediction.confidence;
       } else {
         return null;
       }
@@ -325,8 +440,29 @@ export class TradingEngine {
     };
   }
 
+  // Check take profit and stop loss
+  checkTakeProfitStopLoss(config: TradeConfig): boolean {
+    if (config.takeProfit > 0 && this.sessionProfit >= config.takeProfit) {
+      console.log(`🎯 Take Profit reached: $${this.sessionProfit.toFixed(2)}`);
+      return true;
+    }
+    
+    if (config.stopLoss > 0 && Math.abs(this.sessionLoss) >= config.stopLoss) {
+      console.log(`🛑 Stop Loss reached: $${this.sessionLoss.toFixed(2)}`);
+      return true;
+    }
+    
+    return false;
+  }
+
   // Execute trade
   async executeTrade(signal: TradeSignal, config: TradeConfig): Promise<void> {
+    // Check take profit / stop loss first
+    if (this.checkTakeProfitStopLoss(config)) {
+      console.log('⏸️ Trading paused due to take profit or stop loss');
+      return;
+    }
+
     if (this.cooldownActive) {
       console.log('⏳ Cooldown active, skipping trade');
       return;
@@ -406,10 +542,12 @@ export class TradingEngine {
 
       if (profit > 0) {
         this.consecutiveLosses = 0;
-        console.log(`✅ WIN: +$${profit.toFixed(2)}`);
+        this.sessionProfit += profit;
+        console.log(`✅ WIN: +$${profit.toFixed(2)} | Session P/L: $${(this.sessionProfit + this.sessionLoss).toFixed(2)}`);
       } else {
         this.consecutiveLosses++;
-        console.log(`❌ LOSS: $${profit.toFixed(2)}`);
+        this.sessionLoss += profit;
+        console.log(`❌ LOSS: $${profit.toFixed(2)} | Session P/L: $${(this.sessionProfit + this.sessionLoss).toFixed(2)}`);
       }
     }
   }
@@ -451,15 +589,29 @@ export class TradingEngine {
   clearHistory() {
     this.tradeHistory = [];
     this.consecutiveLosses = 0;
+    this.sessionProfit = 0;
+    this.sessionLoss = 0;
   }
 
   // Reset engine
   reset() {
     this.priceHistory.clear();
+    this.digitHistory.clear();
     this.activeContracts.clear();
     this.tradeHistory = [];
     this.consecutiveLosses = 0;
+    this.sessionProfit = 0;
+    this.sessionLoss = 0;
     this.cooldownActive = false;
+  }
+  
+  // Get session P/L
+  getSessionProfitLoss(): { profit: number; loss: number; net: number } {
+    return {
+      profit: this.sessionProfit,
+      loss: this.sessionLoss,
+      net: this.sessionProfit + this.sessionLoss
+    };
   }
 }
 

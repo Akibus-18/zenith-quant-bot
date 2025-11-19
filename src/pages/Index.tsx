@@ -33,10 +33,10 @@ const Index = () => {
     contractType: 'CALL',
     duration: 5,
     durationUnit: 't',
-    confidenceThreshold: 60,
-    takeProfit: 10,
-    stopLoss: 10,
-    martingaleMultiplier: 1.2,
+    confidenceThreshold: 65,
+    takeProfit: 20,
+    stopLoss: 20,
+    martingaleMultiplier: 1.5,
     barrier: '5',
   });
 
@@ -129,6 +129,21 @@ const Index = () => {
 
   // Analyze market and execute trades
   const analyzeAndTrade = useCallback(() => {
+    // Check take profit / stop loss
+    if (tradingEngine.checkTakeProfitStopLoss(config)) {
+      setIsTrading(false);
+      isTradingRef.current = false;
+      setSignalStatus('IDLE');
+      
+      const sessionPL = tradingEngine.getSessionProfitLoss();
+      toast({
+        title: sessionPL.net > 0 ? '🎯 Take Profit Reached' : '🛑 Stop Loss Reached',
+        description: `Session P/L: $${sessionPL.net.toFixed(2)} | Trading stopped automatically`,
+        variant: sessionPL.net > 0 ? 'default' : 'destructive',
+      });
+      return;
+    }
+
     const signal = tradingEngine.generateSignal(config.symbol, config);
     
     if (signal) {
@@ -143,7 +158,7 @@ const Index = () => {
     } else {
       setSignalStatus('ANALYZING');
     }
-  }, [config, isTrading]);
+  }, [config, toast]);
 
   // Update stats
   const updateStats = () => {
