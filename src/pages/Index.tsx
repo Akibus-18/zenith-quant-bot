@@ -39,6 +39,12 @@ const Index = () => {
     martingaleMultiplier: 1.5,
     barrier: '5',
   });
+  
+  // Use ref to always have latest config in trading loop
+  const configRef = useRef(config);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   const [stats, setStats] = useState({
     totalTrades: 0,
@@ -113,10 +119,10 @@ const Index = () => {
       await derivAPI.getTicks(config.symbol);
       
       derivAPI.subscribe('tick', (data) => {
-        if (data.tick && data.tick.symbol === config.symbol) {
-          tradingEngine.addPriceData(config.symbol, data.tick.quote);
+        if (data.tick && data.tick.symbol === configRef.current.symbol) {
+          tradingEngine.addPriceData(configRef.current.symbol, data.tick.quote);
           
-          // Check for trading signals - use ref to get current value
+          // Check for trading signals - use ref to get current config
           if (isTradingRef.current) {
             analyzeAndTrade();
           }
@@ -129,8 +135,10 @@ const Index = () => {
 
   // Analyze market and execute trades
   const analyzeAndTrade = useCallback(() => {
+    const currentConfig = configRef.current;
+    
     // Check take profit / stop loss
-    if (tradingEngine.checkTakeProfitStopLoss(config)) {
+    if (tradingEngine.checkTakeProfitStopLoss(currentConfig)) {
       setIsTrading(false);
       isTradingRef.current = false;
       setSignalStatus('IDLE');
@@ -144,21 +152,21 @@ const Index = () => {
       return;
     }
 
-    const signal = tradingEngine.generateSignal(config.symbol, config);
+    const signal = tradingEngine.generateSignal(currentConfig.symbol, currentConfig);
     
     if (signal) {
       setCurrentSignal(signal);
       setSignalStatus(`${signal.type} @ ${signal.confidence.toFixed(0)}%`);
       
-      // Execute trade
-      tradingEngine.executeTrade(signal, config).then(() => {
+      // Execute trade immediately
+      tradingEngine.executeTrade(signal, currentConfig).then(() => {
         updateStats();
         updateHistory();
       });
     } else {
-      setSignalStatus('ANALYZING');
+      setSignalStatus('SCANNING');
     }
-  }, [config, toast]);
+  }, [toast]);
 
   // Update stats
   const updateStats = () => {
