@@ -96,7 +96,16 @@ const Index = () => {
         derivAPI.subscribe('proposal_open_contract', (data) => {
           if (data.proposal_open_contract) {
             tradingEngine.handleContractUpdate(data.proposal_open_contract);
-            updateStats();
+            // Force update stats and balance
+            setTimeout(() => {
+              updateStats();
+              // Refresh balance after trade completes
+              derivAPI.getBalance().then((balanceData) => {
+                if (balanceData.balance) {
+                  setBalance(balanceData.balance.balance);
+                }
+              }).catch(console.error);
+            }, 100);
           }
         });
 
@@ -158,27 +167,36 @@ const Index = () => {
       setCurrentSignal(signal);
       setSignalStatus(`${signal.type} @ ${signal.confidence.toFixed(0)}%`);
       
-      // Execute trade immediately
+      // Execute trade immediately with proper state updates
       tradingEngine.executeTrade(signal, currentConfig).then(() => {
-        updateStats();
-        updateHistory();
+        // Force updates to all state
+        setTimeout(() => {
+          updateStats();
+          updateHistory();
+          // Refresh balance
+          derivAPI.getBalance().then((balanceData) => {
+            if (balanceData.balance) {
+              setBalance(balanceData.balance.balance);
+            }
+          }).catch(console.error);
+        }, 200);
       });
     } else {
       setSignalStatus('SCANNING');
     }
   }, [toast]);
 
-  // Update stats
-  const updateStats = () => {
+  // Update stats with force re-render
+  const updateStats = useCallback(() => {
     const engineStats = tradingEngine.getStats();
-    setStats(engineStats);
-  };
+    setStats({...engineStats}); // Force new object
+  }, []);
 
-  // Update trade history
-  const updateHistory = () => {
+  // Update trade history with force re-render
+  const updateHistory = useCallback(() => {
     const history = tradingEngine.getHistory();
-    setTradeHistory(history);
-  };
+    setTradeHistory([...history]); // Force new array
+  }, []);
 
   // Start trading
   const handleStartTrading = async () => {
@@ -331,7 +349,15 @@ const Index = () => {
         {isConnected && (
           <div className="space-y-6">
             {/* Stats */}
-            <StatsPanel stats={stats} balance={balance} />
+            <StatsPanel 
+              stats={{
+                ...stats,
+                martingaleMultiplier: tradingEngine.getStats().consecutiveLosses > 0 
+                  ? Number((config.martingaleMultiplier ** tradingEngine.getStats().consecutiveLosses).toFixed(2))
+                  : 1
+              }} 
+              balance={balance} 
+            />
 
             {/* Controls and Signals */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

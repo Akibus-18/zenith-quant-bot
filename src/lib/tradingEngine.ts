@@ -320,166 +320,159 @@ export class TradingEngine {
       }
     }
 
-    // For Over/Under contracts - Ultra-enhanced with advanced prediction
+    // For Over/Under contracts - Enhanced digit distribution strategy
     else if (contractType === 'DIGITOVER' || contractType === 'DIGITUNDER') {
       const digits = this.digitHistory.get(symbol) || [];
       if (digits.length < 40) return null;
       
-      const recentDigits = digits.slice(-60);  // Increased sample size
+      const recentDigits = digits.slice(-60);
       const barrier = config.barrier ? parseInt(config.barrier) : 5;
       
-      // Advanced digit frequency analysis
       const digitAnalysis = this.analyzeDigitFrequency(recentDigits);
       
-      // Multi-timeframe distribution
-      const veryRecentHigh = recentDigits.slice(-8).filter(d => d > barrier).length;
-      const veryRecentLow = recentDigits.slice(-8).filter(d => d <= barrier).length;
-      const recentHigh = recentDigits.slice(-20).filter(d => d > barrier).length;
-      const recentLow = recentDigits.slice(-20).filter(d => d <= barrier).length;
+      // Advanced Over/Under Strategy:
+      // 1. Track distribution of digits above/below barrier
+      // 2. Detect imbalances and predict reversal
+      // 3. Use streak detection
+      // 4. Combine with hot/cold digit analysis
+      
+      const veryRecent = recentDigits.slice(-10);
+      const recent = recentDigits.slice(-20);
+      
+      const veryRecentHigh = veryRecent.filter(d => d > barrier).length;
+      const veryRecentLow = veryRecent.filter(d => d <= barrier).length;
+      const recentHigh = recent.filter(d => d > barrier).length;
+      const recentLow = recent.filter(d => d <= barrier).length;
       const overallHigh = recentDigits.filter(d => d > barrier).length;
       const overallLow = recentDigits.filter(d => d <= barrier).length;
       
-      // Detect streaks with weighted recent data
+      // Detect streaks
       let streakCount = 1;
       const lastIsHigh = recentDigits[recentDigits.length - 1] > barrier;
       for (let i = recentDigits.length - 2; i >= 0; i--) {
-        if ((recentDigits[i] > barrier) === lastIsHigh) {
-          streakCount++;
-        } else {
-          break;
-        }
+        if ((recentDigits[i] > barrier) === lastIsHigh) streakCount++;
+        else break;
       }
       
-      // Volatility and momentum factors
-      const volatilityFactor = volatility > 0.01 ? 1.1 : 0.98;
-      const trendAlignment = indicators.trend === 'BULLISH' ? 1 : -1;
+      const volatilityFactor = volatility > 0.01 ? 1.05 : 0.98;
       
-      if (contractType === 'DIGITOVER') {
-        // Layer 1: Very strong mean reversion (recent low bias)
-        if (recentLow > recentHigh * 2.2 && veryRecentLow >= 6) {
-          confidence = 75 + Math.min(20, (recentLow - recentHigh) * 4);
+      if (contractType === 'DIGITOVER' || !config.contractType.includes('UNDER')) {
+        contractType = 'DIGITOVER';
+        // Layer 1: Strong low bias - predict reversal to OVER
+        if (recentLow > recentHigh * 2 && veryRecentLow >= 7) {
+          confidence = 75 + Math.min(20, (recentLow - recentHigh) * 3);
           confidence *= volatilityFactor;
         }
-        // Layer 2: Streak reversal (more aggressive)
-        else if (streakCount >= 6 && !lastIsHigh) {
-          confidence = 72 + streakCount * 4;
+        // Layer 2: Long streak reversal
+        else if (streakCount >= 7 && !lastIsHigh) {
+          confidence = 72 + streakCount * 3;
         }
         // Layer 3: Overall + recent alignment
-        else if (overallLow > overallHigh * 1.7 && recentLow > recentHigh) {
-          confidence = 70 + Math.min(22, (overallLow - overallHigh) * 3);
+        else if (overallLow > overallHigh * 1.5 && recentLow > recentHigh) {
+          confidence = 70 + Math.min(20, (overallLow - overallHigh) * 2);
         }
-        // Layer 4: Momentum + technical alignment
-        else if (recentHigh >= recentLow && indicators.rsi > 55 && trendAlignment > 0) {
-          confidence = 72 + (indicators.rsi - 55) * 0.8;
-        }
-        // Layer 5: AI digit prediction
+        // Layer 4: AI prediction boost
         else if (digitAnalysis.prediction && digitAnalysis.prediction.digit > barrier) {
-          confidence = digitAnalysis.prediction.confidence + 5;  // Boost AI prediction
+          confidence = digitAnalysis.prediction.confidence + 5;
         }
-        // Layer 6: Cold hot digits over barrier
-        else if (digitAnalysis.coldDigits.some(d => d > barrier) && veryRecentLow >= 5) {
-          confidence = 68 + digitAnalysis.coldDigits.filter(d => d > barrier).length * 4;
-        }
-        else {
+        // Layer 5: Cold digits over barrier (likely to appear)
+        else if (digitAnalysis.coldDigits.some(d => d > barrier) && veryRecentLow >= 6) {
+          confidence = 68 + digitAnalysis.coldDigits.filter(d => d > barrier).length * 5;
+        } else {
           return null;
         }
-      } else { // DIGITUNDER
-        if (recentHigh > recentLow * 2.2 && veryRecentHigh >= 6) {
-          confidence = 75 + Math.min(20, (recentHigh - recentLow) * 4);
+      } else {
+        contractType = 'DIGITUNDER';
+        // Layer 1: Strong high bias - predict reversal to UNDER
+        if (recentHigh > recentLow * 2 && veryRecentHigh >= 7) {
+          confidence = 75 + Math.min(20, (recentHigh - recentLow) * 3);
           confidence *= volatilityFactor;
         }
-        else if (streakCount >= 6 && lastIsHigh) {
-          confidence = 72 + streakCount * 4;
+        // Layer 2: Long streak reversal
+        else if (streakCount >= 7 && lastIsHigh) {
+          confidence = 72 + streakCount * 3;
         }
-        else if (overallHigh > overallLow * 1.7 && recentHigh > recentLow) {
-          confidence = 70 + Math.min(22, (overallHigh - overallLow) * 3);
+        // Layer 3: Overall + recent alignment
+        else if (overallHigh > overallLow * 1.5 && recentHigh > recentLow) {
+          confidence = 70 + Math.min(20, (overallHigh - overallLow) * 2);
         }
-        else if (recentLow >= recentHigh && indicators.rsi < 45 && trendAlignment < 0) {
-          confidence = 72 + (45 - indicators.rsi) * 0.8;
-        }
+        // Layer 4: AI prediction boost
         else if (digitAnalysis.prediction && digitAnalysis.prediction.digit <= barrier) {
-          confidence = digitAnalysis.prediction.confidence + 5;  // Boost AI prediction
+          confidence = digitAnalysis.prediction.confidence + 5;
         }
-        else if (digitAnalysis.coldDigits.some(d => d <= barrier) && veryRecentHigh >= 5) {
-          confidence = 68 + digitAnalysis.coldDigits.filter(d => d <= barrier).length * 4;
-        }
-        else {
+        // Layer 5: Cold digits under barrier
+        else if (digitAnalysis.coldDigits.some(d => d <= barrier) && veryRecentHigh >= 6) {
+          confidence = 68 + digitAnalysis.coldDigits.filter(d => d <= barrier).length * 5;
+        } else {
           return null;
         }
       }
-      
-      confidence = Math.min(95, confidence);
     }
 
-    // For Matches/Differs contracts - Ultra-enhanced with smart prediction
+    // For Matches/Differs contracts - Enhanced with frequency analysis
     else if (contractType === 'DIGITMATCH' || contractType === 'DIGITDIFF') {
       const digits = this.digitHistory.get(symbol) || [];
       if (digits.length < 30) return null;
       
-      const recentDigits = digits.slice(-50);  // Increased sample
+      const recentDigits = digits.slice(-50);
       const targetDigit = parseInt(config.barrier || '5');
       
       const digitAnalysis = this.analyzeDigitFrequency(recentDigits);
       const targetFrequency = digitAnalysis.frequency[targetDigit];
       const avgFrequency = recentDigits.length / 10;
       
+      // Advanced Matches/Differs Strategy:
+      // 1. Track target digit appearances
+      // 2. Detect hot (overdue for non-match) or cold (overdue for match)
+      // 3. Use very recent patterns for confirmation
+      
       const veryRecentAppearances = recentDigits.slice(-8).filter(d => d === targetDigit).length;
       const recentAppearances = recentDigits.slice(-15).filter(d => d === targetDigit).length;
-      const overallAppearances = targetFrequency;
       
-      // Enhanced mean reversion with multi-layer logic
       const isVeryHot = targetFrequency > avgFrequency * 1.6;
       const isHot = targetFrequency > avgFrequency * 1.3;
       const isVeryCold = targetFrequency < avgFrequency * 0.4;
       const isCold = targetFrequency < avgFrequency * 0.7;
       
-      if (veryRecentAppearances >= 4) {
-        // Target appeared way too much very recently
+      // Strategy selection
+      if (veryRecentAppearances >= 3) {
+        // Target appeared too much very recently - predict DIFFERS
         contractType = 'DIGITDIFF';
         confidence = 75 + veryRecentAppearances * 5;
-      } else if (recentAppearances >= 6) {
-        // Target appeared too much recently
+      } else if (recentAppearances >= 5) {
+        // Target appeared too much recently - predict DIFFERS
         contractType = 'DIGITDIFF';
         confidence = 72 + recentAppearances * 4;
-      } else if (isVeryHot && recentAppearances >= 4) {
-        // Very hot digit with many recent appearances
+      } else if (isVeryHot && recentAppearances >= 3) {
+        // Very hot digit with recent appearances - predict DIFFERS
         contractType = 'DIGITDIFF';
-        confidence = 70 + (targetFrequency - avgFrequency) * 10;
+        confidence = 70 + (targetFrequency - avgFrequency) * 8;
       } else if (isHot && veryRecentAppearances >= 2) {
-        // Hot digit with recent spike
+        // Hot digit with recent spike - predict DIFFERS
         contractType = 'DIGITDIFF';
-        confidence = 68 + (targetFrequency - avgFrequency) * 9;
-      } else if (isVeryCold && recentAppearances === 0) {
-        // Very cold digit is overdue
-        contractType = 'DIGITMATCH';
-        confidence = 72 + (avgFrequency - targetFrequency) * 12;
-      } else if (isCold && veryRecentAppearances === 0) {
-        // Cold digit hasn't appeared very recently
-        contractType = 'DIGITMATCH';
-        confidence = 70 + (avgFrequency - targetFrequency) * 10;
-      } else if (recentAppearances === 0 && overallAppearances <= 3) {
-        // Hasn't appeared recently and overall rare - due to appear
-        contractType = 'DIGITMATCH';
-        confidence = 68 + (3 - overallAppearances) * 8;
-      } else if (digitAnalysis.prediction && digitAnalysis.prediction.digit === targetDigit) {
-        // AI strongly predicts this digit
-        contractType = 'DIGITMATCH';
-        confidence = digitAnalysis.prediction.confidence + 8;  // Boost AI
+        confidence = 68 + (targetFrequency - avgFrequency) * 6;
       } else if (veryRecentAppearances === 0 && recentAppearances <= 1) {
-        // Long absence suggests appearance is due
+        // Target not appearing recently - predict MATCHES
         contractType = 'DIGITMATCH';
-        confidence = 66 + (1 - recentAppearances) * 6;
+        confidence = 70 + (1 - recentAppearances) * 10;
+      } else if (isVeryCold) {
+        // Very cold digit - overdue - predict MATCHES
+        contractType = 'DIGITMATCH';
+        confidence = 72 + (avgFrequency - targetFrequency) * 10;
+      } else if (isCold && veryRecentAppearances === 0) {
+        // Cold digit with no recent appearances - predict MATCHES
+        contractType = 'DIGITMATCH';
+        confidence = 68 + (avgFrequency - targetFrequency) * 8;
+      } else if (digitAnalysis.prediction && digitAnalysis.prediction.digit === targetDigit) {
+        // AI predicts the target digit - predict MATCHES
+        contractType = 'DIGITMATCH';
+        confidence = digitAnalysis.prediction.confidence + 5;
       } else {
-        return null;
+        return null; // No clear pattern
       }
-      
-      confidence = Math.min(95, confidence);
     }
 
-    // Check confidence threshold
-    if (confidence < config.confidenceThreshold) {
-      return null;
-    }
+    confidence = Math.min(95, confidence);
 
     return {
       symbol,
@@ -488,93 +481,6 @@ export class TradingEngine {
       indicators,
       timestamp: Date.now(),
     };
-  }
-
-  // Check take profit and stop loss
-  checkTakeProfitStopLoss(config: TradeConfig): boolean {
-    if (config.takeProfit > 0 && this.sessionProfit >= config.takeProfit) {
-      console.log(`🎯 Take Profit reached: $${this.sessionProfit.toFixed(2)}`);
-      return true;
-    }
-    
-    if (config.stopLoss > 0 && Math.abs(this.sessionLoss) >= config.stopLoss) {
-      console.log(`🛑 Stop Loss reached: $${this.sessionLoss.toFixed(2)}`);
-      return true;
-    }
-    
-    return false;
-  }
-
-  // Execute trade
-  async executeTrade(signal: TradeSignal, config: TradeConfig): Promise<void> {
-    // Check take profit / stop loss first
-    if (this.checkTakeProfitStopLoss(config)) {
-      console.log('⏸️ Trading paused due to take profit or stop loss');
-      return;
-    }
-
-    if (this.cooldownActive) {
-      console.log('⏳ Cooldown active, skipping trade');
-      return;
-    }
-
-    // Advanced adaptive martingale recovery
-    let stake = config.stake;
-    if (this.consecutiveLosses > 0) {
-      // Progressive recovery based on loss streak
-      const recoveryMultiplier = this.consecutiveLosses >= 3 
-        ? config.martingaleMultiplier * 1.2  // Aggressive recovery after 3+ losses
-        : config.martingaleMultiplier;
-      
-      stake = config.stake * Math.pow(recoveryMultiplier, this.consecutiveLosses);
-      
-      // Dynamic cap based on balance and confidence
-      const maxStake = signal.confidence >= 85 
-        ? config.stake * 8  // Higher cap for high confidence
-        : config.stake * 5;  // Standard cap
-      
-      stake = Math.min(stake, maxStake);
-    }
-    
-    // CRITICAL: Round to 2 decimal places to avoid API rejection
-    stake = Math.round(stake * 100) / 100;
-
-    console.log(`⚡ Executing ${signal.type} on ${signal.symbol} | Stake: $${stake.toFixed(2)} | Confidence: ${signal.confidence.toFixed(0)}% | Losses: ${this.consecutiveLosses}`);
-
-    try {
-      const params: any = {
-        amount: stake,
-        basis: 'stake',
-        contract_type: signal.type,
-        currency: 'USD',
-        duration: config.duration,
-        duration_unit: config.durationUnit,
-        symbol: signal.symbol,
-      };
-
-      // Add barrier for digit contracts
-      if (signal.type === 'DIGITOVER' || signal.type === 'DIGITUNDER' || 
-          signal.type === 'DIGITMATCH' || signal.type === 'DIGITDIFF') {
-        params.barrier = config.barrier || '5';
-        console.log(`🎯 Using barrier: ${params.barrier} for ${signal.type}`);
-      }
-
-      const response = await derivAPI.buyContract(params);
-
-      if (response.buy) {
-        const contract = response.buy;
-        this.activeContracts.set(contract.contract_id, {
-          ...contract,
-          signal,
-          stake,
-        });
-
-        console.log(`✅ Contract ${contract.contract_id} opened | Payout: $${contract.payout}`);
-        this.startCooldown(8000); // 8 second cooldown for faster execution
-      }
-    } catch (error: any) {
-      console.error('❌ Trade execution failed:', error.message);
-    }
   }
 
   // Handle contract update
@@ -610,6 +516,79 @@ export class TradingEngine {
         this.sessionLoss += profit;
         console.log(`❌ LOSS: $${profit.toFixed(2)} | Session P/L: $${(this.sessionProfit + this.sessionLoss).toFixed(2)}`);
       }
+    }
+  }
+
+
+  // Check take profit / stop loss
+  checkTakeProfitStopLoss(config: TradeConfig): boolean {
+    const { takeProfit, stopLoss } = config;
+    const net = this.sessionProfit + this.sessionLoss;
+    
+    if (takeProfit > 0 && net >= takeProfit) {
+      console.log(`🎯 Take Profit reached: $${net.toFixed(2)}`);
+      return true;
+    }
+    
+    if (stopLoss > 0 && net <= -stopLoss) {
+      console.log(`🛑 Stop Loss hit: $${net.toFixed(2)}`);
+      return true;
+    }
+    
+    return false;
+  }
+
+  // Execute trade with adaptive martingale
+  async executeTrade(signal: TradeSignal, config: TradeConfig): Promise<void> {
+    if (this.cooldownActive) {
+      console.log('⏳ Cooldown active, skipping trade');
+      return;
+    }
+
+    // Adaptive stake with progressive recovery
+    let adjustedStake = config.stake;
+    if (this.consecutiveLosses > 0) {
+      // Progressive martingale based on losses
+      const multiplier = this.consecutiveLosses >= 3 
+        ? config.martingaleMultiplier * 1.2  // More aggressive after 3+ losses
+        : config.martingaleMultiplier;
+      
+      adjustedStake = config.stake * Math.pow(multiplier, this.consecutiveLosses);
+      
+      // Cap martingale based on confidence
+      const maxMultiplier = signal.confidence >= 80 ? 8 : 5;
+      adjustedStake = Math.min(adjustedStake, config.stake * maxMultiplier);
+    }
+    
+    // Round stake to 2 decimals to prevent API errors
+    adjustedStake = Number(adjustedStake.toFixed(2));
+
+    console.log(`📊 Trade Signal: ${signal.type} @ ${signal.confidence.toFixed(0)}% | Stake: $${adjustedStake.toFixed(2)} (${this.consecutiveLosses} losses)`);
+
+    try {
+      const response = await derivAPI.buyContract({
+        contract_type: signal.type,
+        symbol: signal.symbol,
+        duration: config.duration,
+        duration_unit: config.durationUnit,
+        amount: adjustedStake,
+        basis: 'stake',
+        currency: 'USD',
+        barrier: config.barrier,
+      });
+
+      if (response.buy) {
+        this.activeContracts.set(response.buy.contract_id, {
+          signal,
+          stake: adjustedStake,
+          purchaseTime: Date.now(),
+        });
+
+        console.log(`✅ Trade executed: ${response.buy.contract_id}`);
+        this.startCooldown(8000); // 8s cooldown
+      }
+    } catch (error: any) {
+      console.error('❌ Trade execution failed:', error.message);
     }
   }
 

@@ -8,6 +8,7 @@ interface StatsPanelProps {
     losses: number;
     winRate: number;
     totalProfit: number;
+    martingaleMultiplier?: number;
   };
   balance: number;
 }
@@ -63,6 +64,24 @@ export const StatsPanel = ({ stats, balance }: StatsPanelProps) => {
           </div>
           <p className={`text-3xl font-bold ${stats.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
             {stats.totalProfit >= 0 ? '+' : ''}${stats.totalProfit.toFixed(2)}
+          </p>
+        </div>
+      </Card>
+
+      <Card className="relative overflow-hidden border-card-border bg-card-glass/50 backdrop-blur-xl">
+        <div className="absolute inset-0 bg-gradient-glow opacity-10" />
+        <div className="relative p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 rounded-lg bg-accent/20">
+              <Target className="w-5 h-5 text-accent" />
+            </div>
+            <p className="text-sm text-muted-foreground font-medium">MARTINGALE</p>
+          </div>
+          <p className="text-3xl font-bold text-accent">
+            {stats.martingaleMultiplier?.toFixed(2)}x
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Current multiplier
           </p>
         </div>
       </Card>

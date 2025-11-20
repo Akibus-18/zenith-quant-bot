@@ -70,19 +70,21 @@ export const TradingControls = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="CALL">Rise/Fall</SelectItem>
-              <SelectItem value="DIGITEVEN">Even/Odd</SelectItem>
-              <SelectItem value="DIGITOVER">Over/Under</SelectItem>
-              <SelectItem value="DIGITMATCH">Matches/Differs</SelectItem>
+              <SelectItem value="CALL">Rise</SelectItem>
+              <SelectItem value="PUT">Fall</SelectItem>
+              <SelectItem value="DIGITEVEN">Even</SelectItem>
+              <SelectItem value="DIGITODD">Odd</SelectItem>
+              <SelectItem value="DIGITOVER">Over</SelectItem>
+              <SelectItem value="DIGITUNDER">Under</SelectItem>
+              <SelectItem value="DIGITMATCH">Matches</SelectItem>
+              <SelectItem value="DIGITDIFF">Differs</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {(config.contractType === 'DIGITOVER' || config.contractType === 'DIGITUNDER') && (
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              {config.contractType === 'DIGITOVER' ? 'DIGIT OVER' : 'DIGIT UNDER'}
-            </Label>
+            <Label className="text-sm font-medium text-muted-foreground">BARRIER DIGIT</Label>
             <Select 
               value={config.barrier || '5'} 
               onValueChange={(value) => onConfigChange({ ...config, barrier: value })}
@@ -91,33 +93,40 @@ export const TradingControls = ({
                 <SelectValue placeholder="Select digit" />
               </SelectTrigger>
               <SelectContent>
-                {config.contractType === 'DIGITOVER' ? (
-                  <>
-                    <SelectItem value="0">Over 0</SelectItem>
-                    <SelectItem value="1">Over 1</SelectItem>
-                    <SelectItem value="2">Over 2</SelectItem>
-                    <SelectItem value="3">Over 3</SelectItem>
-                    <SelectItem value="4">Over 4</SelectItem>
-                    <SelectItem value="5">Over 5</SelectItem>
-                    <SelectItem value="6">Over 6</SelectItem>
-                    <SelectItem value="7">Over 7</SelectItem>
-                    <SelectItem value="8">Over 8</SelectItem>
-                  </>
-                ) : (
-                  <>
-                    <SelectItem value="1">Under 1</SelectItem>
-                    <SelectItem value="2">Under 2</SelectItem>
-                    <SelectItem value="3">Under 3</SelectItem>
-                    <SelectItem value="4">Under 4</SelectItem>
-                    <SelectItem value="5">Under 5</SelectItem>
-                    <SelectItem value="6">Under 6</SelectItem>
-                    <SelectItem value="7">Under 7</SelectItem>
-                    <SelectItem value="8">Under 8</SelectItem>
-                    <SelectItem value="9">Under 9</SelectItem>
-                  </>
-                )}
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+                  <SelectItem key={digit} value={digit.toString()}>
+                    {config.contractType === 'DIGITOVER' ? `Over ${digit}` : `Under ${digit}`}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Predicting digit {config.contractType === 'DIGITOVER' ? '>' : '≤'} {config.barrier || '5'}
+            </p>
+          </div>
+        )}
+
+        {(config.contractType === 'DIGITMATCH' || config.contractType === 'DIGITDIFF') && (
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-muted-foreground">TARGET DIGIT</Label>
+            <Select 
+              value={config.barrier || '5'} 
+              onValueChange={(value) => onConfigChange({ ...config, barrier: value })}
+            >
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Select digit" />
+              </SelectTrigger>
+              <SelectContent>
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+                  <SelectItem key={digit} value={digit.toString()}>
+                    {digit}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Predicting digit {config.contractType === 'DIGITMATCH' ? 'matches' : 'differs from'} {config.barrier || '5'}
+            </p>
           </div>
         )}
 
