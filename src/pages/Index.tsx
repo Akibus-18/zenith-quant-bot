@@ -33,6 +33,7 @@ const Index = () => {
     contractType: 'CALL',
     duration: 5,
     durationUnit: 't',
+    timeframe: '3m',
     confidenceThreshold: 65,
     takeProfit: 20,
     stopLoss: 20,

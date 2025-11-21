@@ -12,6 +12,7 @@ export interface TradeConfig {
   contractType: string;
   duration: number;
   durationUnit: string;
+  timeframe: string;
   confidenceThreshold: number;
   takeProfit: number;
   stopLoss: number;
@@ -204,13 +205,24 @@ export class TradingEngine {
       return null;
     }
 
-    // Analyze indicators
-    const indicators = TradingIndicators.analyzeMarket(prices);
+    // Calculate timeframe window size (ticks per timeframe)
+    const timeframeWindows: Record<string, number> = {
+      '1m': 20,   // ~20 ticks = 1 minute
+      '3m': 60,   // ~60 ticks = 3 minutes
+      '5m': 100,  // ~100 ticks = 5 minutes
+      '10m': 200  // ~200 ticks = 10 minutes
+    };
+    
+    const windowSize = timeframeWindows[config.timeframe] || 60;
+    const analysisData = prices.slice(-Math.min(windowSize, prices.length));
+    
+    // Analyze indicators with timeframe-adjusted data
+    const indicators = TradingIndicators.analyzeMarket(analysisData);
     
     // Enhanced pattern detection
-    const { support, resistance } = this.detectSupportResistance(prices);
-    const volatility = this.calculateVolatility(prices);
-    const { pattern, strength: patternStrength } = this.detectPattern(prices);
+    const { support, resistance } = this.detectSupportResistance(analysisData);
+    const volatility = this.calculateVolatility(analysisData);
+    const { pattern, strength: patternStrength } = this.detectPattern(analysisData);
     
     const currentPrice = prices[prices.length - 1];
 
@@ -553,26 +565,17 @@ export class TradingEngine {
     return false;
   }
 
-  // Execute trade with adaptive martingale
+  // Execute trade with user-controlled martingale
   async executeTrade(signal: TradeSignal, config: TradeConfig): Promise<void> {
     if (this.cooldownActive) {
       console.log('⏳ Cooldown active, skipping trade');
       return;
     }
 
-    // Adaptive stake with progressive recovery
+    // Use EXACT user-configured martingale multiplier - no adjustments
     let adjustedStake = config.stake;
     if (this.consecutiveLosses > 0) {
-      // Progressive martingale based on losses
-      const multiplier = this.consecutiveLosses >= 3 
-        ? config.martingaleMultiplier * 1.2  // More aggressive after 3+ losses
-        : config.martingaleMultiplier;
-      
-      adjustedStake = config.stake * Math.pow(multiplier, this.consecutiveLosses);
-      
-      // Cap martingale based on confidence
-      const maxMultiplier = signal.confidence >= 80 ? 8 : 5;
-      adjustedStake = Math.min(adjustedStake, config.stake * maxMultiplier);
+      adjustedStake = config.stake * Math.pow(config.martingaleMultiplier, this.consecutiveLosses);
     }
     
     // Round stake to 2 decimals to prevent API errors

@@ -12,6 +12,7 @@ interface TradingControlsProps {
     stake: number;
     contractType: string;
     duration: number;
+    timeframe: string;
     confidenceThreshold: number;
     takeProfit: number;
     stopLoss: number;
@@ -149,6 +150,22 @@ export const TradingControls = ({
             onChange={(e) => onConfigChange({ ...config, duration: parseInt(e.target.value) })}
             className="bg-input border-border"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-muted-foreground">ANALYSIS TIMEFRAME</Label>
+          <Select value={config.timeframe} onValueChange={(value) => onConfigChange({ ...config, timeframe: value })}>
+            <SelectTrigger className="bg-input border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1m">1 Minute (Fast)</SelectItem>
+              <SelectItem value="3m">3 Minutes (Balanced)</SelectItem>
+              <SelectItem value="5m">5 Minutes (Stable)</SelectItem>
+              <SelectItem value="10m">10 Minutes (Conservative)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Historical window for pattern analysis</p>
         </div>
 
         <div className="space-y-2">
