@@ -21,7 +21,8 @@ const Index = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [accountId, setAccountId] = useState('Not connected');
   const [balance, setBalance] = useState(0);
-  
+  const [accountCurrency, setAccountCurrency] = useState('USD');
+
   // Trading state
   const [isTrading, setIsTrading] = useState(false);
   const isTradingRef = useRef(false);
@@ -38,9 +39,10 @@ const Index = () => {
     takeProfit: 20,
     stopLoss: 20,
     martingaleMultiplier: 1.5,
+    currency: 'USD',
     barrier: '5',
   });
-  
+
   // Use ref to always have latest config in trading loop
   const configRef = useRef(config);
   useEffect(() => {
@@ -80,10 +82,13 @@ const Index = () => {
         setIsConnected(true);
         setAccountId(auth.authorize.loginid);
         setBalance(auth.authorize.balance);
+        const detectedCurrency = auth.authorize.currency || 'USD';
+        setAccountCurrency(detectedCurrency);
+        setConfig((prev) => ({ ...prev, currency: detectedCurrency }));
 
         toast({
           title: '✅ Connected',
-          description: `Welcome ${auth.authorize.loginid}`,
+          description: `Welcome ${auth.authorize.loginid} (${detectedCurrency})`,
         });
 
         // Subscribe to balance updates
