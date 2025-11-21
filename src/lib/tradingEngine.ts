@@ -409,66 +409,81 @@ export class TradingEngine {
       }
     }
 
-    // For Matches/Differs contracts - Enhanced with frequency analysis
+    // For Matches/Differs contracts - FIXED STRATEGY
     else if (contractType === 'DIGITMATCH' || contractType === 'DIGITDIFF') {
       const digits = this.digitHistory.get(symbol) || [];
-      if (digits.length < 30) return null;
+      if (digits.length < 40) return null;
       
-      const recentDigits = digits.slice(-50);
+      const recentDigits = digits.slice(-60);
       const targetDigit = parseInt(config.barrier || '5');
       
       const digitAnalysis = this.analyzeDigitFrequency(recentDigits);
       const targetFrequency = digitAnalysis.frequency[targetDigit];
       const avgFrequency = recentDigits.length / 10;
       
-      // Advanced Matches/Differs Strategy:
-      // 1. Track target digit appearances
-      // 2. Detect hot (overdue for non-match) or cold (overdue for match)
-      // 3. Use very recent patterns for confirmation
-      
-      const veryRecentAppearances = recentDigits.slice(-8).filter(d => d === targetDigit).length;
+      // Track appearances in different time windows
+      const veryRecentAppearances = recentDigits.slice(-5).filter(d => d === targetDigit).length;
       const recentAppearances = recentDigits.slice(-15).filter(d => d === targetDigit).length;
+      const mediumAppearances = recentDigits.slice(-30).filter(d => d === targetDigit).length;
       
-      const isVeryHot = targetFrequency > avgFrequency * 1.6;
-      const isHot = targetFrequency > avgFrequency * 1.3;
-      const isVeryCold = targetFrequency < avgFrequency * 0.4;
-      const isCold = targetFrequency < avgFrequency * 0.7;
+      // Check if digit is hot (appearing frequently)
+      const isVeryHot = targetFrequency > avgFrequency * 1.8;
+      const isHot = targetFrequency > avgFrequency * 1.4;
+      const isCold = targetFrequency < avgFrequency * 0.6;
+      const isVeryCold = targetFrequency < avgFrequency * 0.3;
       
-      // Strategy selection
-      if (veryRecentAppearances >= 3) {
-        // Target appeared too much very recently - predict DIFFERS
-        contractType = 'DIGITDIFF';
-        confidence = 75 + veryRecentAppearances * 5;
-      } else if (recentAppearances >= 5) {
-        // Target appeared too much recently - predict DIFFERS
-        contractType = 'DIGITDIFF';
-        confidence = 72 + recentAppearances * 4;
-      } else if (isVeryHot && recentAppearances >= 3) {
-        // Very hot digit with recent appearances - predict DIFFERS
-        contractType = 'DIGITDIFF';
-        confidence = 70 + (targetFrequency - avgFrequency) * 8;
-      } else if (isHot && veryRecentAppearances >= 2) {
-        // Hot digit with recent spike - predict DIFFERS
-        contractType = 'DIGITDIFF';
-        confidence = 68 + (targetFrequency - avgFrequency) * 6;
-      } else if (veryRecentAppearances === 0 && recentAppearances <= 1) {
-        // Target not appearing recently - predict MATCHES
-        contractType = 'DIGITMATCH';
-        confidence = 70 + (1 - recentAppearances) * 10;
-      } else if (isVeryCold) {
-        // Very cold digit - overdue - predict MATCHES
-        contractType = 'DIGITMATCH';
-        confidence = 72 + (avgFrequency - targetFrequency) * 10;
-      } else if (isCold && veryRecentAppearances === 0) {
-        // Cold digit with no recent appearances - predict MATCHES
-        contractType = 'DIGITMATCH';
-        confidence = 68 + (avgFrequency - targetFrequency) * 8;
-      } else if (digitAnalysis.prediction && digitAnalysis.prediction.digit === targetDigit) {
-        // AI predicts the target digit - predict MATCHES
-        contractType = 'DIGITMATCH';
-        confidence = digitAnalysis.prediction.confidence + 5;
+      // Detect streaks
+      const lastDigitsMatch = recentDigits.slice(-3).filter(d => d === targetDigit).length;
+      
+      // CRITICAL FIX: Correct strategy for Matches vs Differs
+      if (contractType === 'DIGITMATCH') {
+        // DIGITMATCH: Predict target digit WILL appear
+        // Only trade when digit is HOT or on a hot streak
+        
+        if (isVeryHot && veryRecentAppearances >= 2) {
+          // Very hot digit appearing recently - momentum continues
+          confidence = 78 + Math.min(15, targetFrequency * 2);
+        } else if (isHot && recentAppearances >= 4) {
+          // Hot digit with strong recent presence
+          confidence = 75 + Math.min(15, recentAppearances * 2);
+        } else if (lastDigitsMatch >= 2) {
+          // Digit on a streak - likely to continue
+          confidence = 76 + lastDigitsMatch * 6;
+        } else if (digitAnalysis.hotDigits[0] === targetDigit) {
+          // Target is the hottest digit overall
+          confidence = 74 + Math.min(18, targetFrequency * 2.5);
+        } else if (isVeryCold && mediumAppearances === 0) {
+          // Overdue digit (hasn't appeared in long time)
+          confidence = 72 + Math.min(15, (avgFrequency - targetFrequency) * 5);
+        } else {
+          return null; // Not confident enough for MATCH
+        }
       } else {
-        return null; // No clear pattern
+        // DIGITDIFF: Predict target digit will NOT appear (90% natural win rate)
+        // Trade MORE OFTEN since differs has natural advantage
+        
+        if (veryRecentAppearances >= 3) {
+          // Just appeared multiple times - mean reversion suggests differ
+          confidence = 85 + veryRecentAppearances * 3;
+        } else if (recentAppearances >= 5) {
+          // Appeared too much recently - due for differ
+          confidence = 82 + Math.min(15, recentAppearances * 2);
+        } else if (isVeryHot && veryRecentAppearances >= 1) {
+          // Hot digit just appeared - less likely to repeat immediately
+          confidence = 80 + Math.min(15, targetFrequency * 3);
+        } else if (lastDigitsMatch >= 2) {
+          // On a streak - streak likely to break
+          confidence = 83 + lastDigitsMatch * 4;
+        } else if (!isCold && !isHot) {
+          // Normal frequency - standard 90% differ probability
+          confidence = 75;
+        } else if (isCold) {
+          // Cold digit - very likely to differ
+          confidence = 78 + Math.min(15, (avgFrequency - targetFrequency) * 4);
+        } else {
+          // Default case - still favor differ due to natural 90% odds
+          confidence = 73;
+        }
       }
     }
 
