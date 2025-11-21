@@ -17,6 +17,7 @@ export interface TradeConfig {
   takeProfit: number;
   stopLoss: number;
   martingaleMultiplier: number;
+  currency: string;
   barrier?: string;
 }
 
