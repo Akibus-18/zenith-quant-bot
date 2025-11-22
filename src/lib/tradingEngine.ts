@@ -592,7 +592,7 @@ export class TradingEngine {
         duration_unit: config.durationUnit,
         amount: adjustedStake,
         basis: 'stake',
-        currency: 'USD',
+        currency: config.currency || 'USD',
         barrier: config.barrier,
       });
 

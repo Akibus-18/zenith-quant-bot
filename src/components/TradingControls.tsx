@@ -73,7 +73,8 @@ export const TradingControls = ({
             <SelectContent>
               <SelectItem value="CALL">Rise/Fall</SelectItem>
               <SelectItem value="DIGITEVEN">Even/Odd</SelectItem>
-              <SelectItem value="DIGITOVER">Over/Under</SelectItem>
+              <SelectItem value="DIGITOVER">Digit Over</SelectItem>
+              <SelectItem value="DIGITUNDER">Digit Under</SelectItem>
               <SelectItem value="DIGITMATCH">Matches</SelectItem>
               <SelectItem value="DIGITDIFF">Differs</SelectItem>
             </SelectContent>
