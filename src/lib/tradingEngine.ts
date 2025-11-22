@@ -585,6 +585,8 @@ export class TradingEngine {
     console.log(`📊 Trade Signal: ${signal.type} @ ${signal.confidence.toFixed(0)}% | Stake: $${adjustedStake.toFixed(2)} (${this.consecutiveLosses} losses)`);
 
     try {
+      const shouldUseBarrier = ['DIGITOVER', 'DIGITUNDER', 'DIGITMATCH', 'DIGITDIFF'].includes(signal.type);
+
       const response = await derivAPI.buyContract({
         contract_type: signal.type,
         symbol: signal.symbol,
@@ -593,7 +595,7 @@ export class TradingEngine {
         amount: adjustedStake,
         basis: 'stake',
         currency: config.currency || 'USD',
-        barrier: config.barrier,
+        barrier: shouldUseBarrier ? config.barrier : undefined,
       });
 
       if (response.buy) {
