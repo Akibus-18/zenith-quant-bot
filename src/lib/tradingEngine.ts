@@ -573,10 +573,10 @@ export class TradingEngine {
       return;
     }
 
-    // Use EXACT user-configured martingale multiplier - no adjustments
+    // Use EXACT user-configured multiplier after ANY loss (not exponential)
     let adjustedStake = config.stake;
     if (this.consecutiveLosses > 0) {
-      adjustedStake = config.stake * Math.pow(config.martingaleMultiplier, this.consecutiveLosses);
+      adjustedStake = config.stake * config.martingaleMultiplier;
     }
     
     // Round stake to 2 decimals to prevent API errors
