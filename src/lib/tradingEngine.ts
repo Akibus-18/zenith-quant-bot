@@ -567,12 +567,15 @@ export class TradingEngine {
     return false;
   }
 
-  // Execute multiple contracts at once per signal
+  // Execute multiple contracts per signal with staggered timing
   async executeTrade(signal: TradeSignal, config: TradeConfig): Promise<void> {
     if (this.cooldownActive) {
       console.log('⏳ Cooldown active, skipping trade');
       return;
     }
+
+    // Set cooldown immediately to prevent duplicate signals
+    this.cooldownActive = true;
 
     // Use EXACT user-configured multiplier after ANY loss (not exponential)
     let adjustedStake = config.stake;
@@ -584,22 +587,31 @@ export class TradingEngine {
     adjustedStake = Number(adjustedStake.toFixed(2));
 
     const contractsCount = config.contractsPerTrade || 1;
-    console.log(`📊 Trade Signal: ${signal.type} @ ${signal.confidence.toFixed(0)}% | Stake: $${adjustedStake.toFixed(2)} x ${contractsCount} contracts (${this.consecutiveLosses} losses)`);
+    console.log(`📊 Batch Trade: ${signal.type} @ ${signal.confidence.toFixed(0)}% | Stake: $${adjustedStake.toFixed(2)} x ${contractsCount} contracts`);
 
     const shouldUseBarrier = ['DIGITOVER', 'DIGITUNDER', 'DIGITMATCH', 'DIGITDIFF'].includes(signal.type);
     
-    // Execute all contracts in parallel as a batch
-    const contractPromises: Promise<void>[] = [];
-    
+    // Execute contracts sequentially with small delays to avoid API rate limits
+    let successCount = 0;
     for (let i = 0; i < contractsCount; i++) {
-      contractPromises.push(this.executeSingleContract(signal, config, adjustedStake, shouldUseBarrier, i + 1));
+      const success = await this.executeSingleContract(signal, config, adjustedStake, shouldUseBarrier, i + 1);
+      if (success) successCount++;
+      
+      // Small delay between contracts to avoid rate limiting (except last one)
+      if (i < contractsCount - 1) {
+        await this.delay(150);
+      }
     }
     
-    // Wait for all contracts to complete
-    await Promise.all(contractPromises);
+    console.log(`📦 Batch complete: ${successCount}/${contractsCount} contracts executed`);
     
     // Start cooldown after batch completes
     this.startCooldown(8000);
+  }
+
+  // Helper delay function
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // Helper to execute a single contract
@@ -609,7 +621,7 @@ export class TradingEngine {
     stake: number, 
     shouldUseBarrier: boolean,
     contractIndex: number
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const response = await derivAPI.buyContract({
         contract_type: signal.type,
@@ -629,10 +641,13 @@ export class TradingEngine {
           purchaseTime: Date.now(),
         });
 
-        console.log(`✅ Contract ${contractIndex} executed: ${response.buy.contract_id}`);
+        console.log(`✅ Contract ${contractIndex}/${config.contractsPerTrade} executed: ${response.buy.contract_id}`);
+        return true;
       }
+      return false;
     } catch (error: any) {
       console.error(`❌ Contract ${contractIndex} failed:`, error.message);
+      return false;
     }
   }
 
