@@ -18,6 +18,7 @@ interface TradingControlsProps {
     stopLoss: number;
     martingaleMultiplier: number;
     barrier?: string;
+    contractsPerTrade: number;
   };
   onConfigChange: (config: any) => void;
   onStart: () => void;
@@ -224,6 +225,21 @@ export const TradingControls = ({
             className="bg-input border-border"
             disabled={isTrading}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-muted-foreground">CONTRACTS PER SIGNAL</Label>
+          <Input
+            type="number"
+            step="1"
+            min="1"
+            max="20"
+            value={config.contractsPerTrade}
+            onChange={(e) => onConfigChange({ ...config, contractsPerTrade: parseInt(e.target.value) || 1 })}
+            className="bg-input border-border"
+            disabled={isTrading}
+          />
+          <p className="text-xs text-muted-foreground">Batch buy multiple contracts per signal (default: 10)</p>
         </div>
       </div>
 

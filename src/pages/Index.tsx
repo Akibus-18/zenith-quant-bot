@@ -41,6 +41,7 @@ const Index = () => {
     martingaleMultiplier: 1.5,
     currency: 'USD',
     barrier: '5',
+    contractsPerTrade: 10, // Default to 10 contracts per signal
   });
 
   // Use ref to always have latest config in trading loop
