@@ -19,6 +19,7 @@ export interface TradeConfig {
   martingaleMultiplier: number;
   currency: string;
   barrier?: string;
+  contractsPerTrade: number; // Number of contracts to execute per signal
 }
 
 export interface TradeSignal {
@@ -566,7 +567,7 @@ export class TradingEngine {
     return false;
   }
 
-  // Execute trade with user-controlled martingale
+  // Execute multiple contracts at once per signal
   async executeTrade(signal: TradeSignal, config: TradeConfig): Promise<void> {
     if (this.cooldownActive) {
       console.log('⏳ Cooldown active, skipping trade');
@@ -582,17 +583,40 @@ export class TradingEngine {
     // Round stake to 2 decimals to prevent API errors
     adjustedStake = Number(adjustedStake.toFixed(2));
 
-    console.log(`📊 Trade Signal: ${signal.type} @ ${signal.confidence.toFixed(0)}% | Stake: $${adjustedStake.toFixed(2)} (${this.consecutiveLosses} losses)`);
+    const contractsCount = config.contractsPerTrade || 1;
+    console.log(`📊 Trade Signal: ${signal.type} @ ${signal.confidence.toFixed(0)}% | Stake: $${adjustedStake.toFixed(2)} x ${contractsCount} contracts (${this.consecutiveLosses} losses)`);
 
+    const shouldUseBarrier = ['DIGITOVER', 'DIGITUNDER', 'DIGITMATCH', 'DIGITDIFF'].includes(signal.type);
+    
+    // Execute all contracts in parallel as a batch
+    const contractPromises: Promise<void>[] = [];
+    
+    for (let i = 0; i < contractsCount; i++) {
+      contractPromises.push(this.executeSingleContract(signal, config, adjustedStake, shouldUseBarrier, i + 1));
+    }
+    
+    // Wait for all contracts to complete
+    await Promise.all(contractPromises);
+    
+    // Start cooldown after batch completes
+    this.startCooldown(8000);
+  }
+
+  // Helper to execute a single contract
+  private async executeSingleContract(
+    signal: TradeSignal, 
+    config: TradeConfig, 
+    stake: number, 
+    shouldUseBarrier: boolean,
+    contractIndex: number
+  ): Promise<void> {
     try {
-      const shouldUseBarrier = ['DIGITOVER', 'DIGITUNDER', 'DIGITMATCH', 'DIGITDIFF'].includes(signal.type);
-
       const response = await derivAPI.buyContract({
         contract_type: signal.type,
         symbol: signal.symbol,
         duration: config.duration,
         duration_unit: config.durationUnit,
-        amount: adjustedStake,
+        amount: stake,
         basis: 'stake',
         currency: config.currency || 'USD',
         barrier: shouldUseBarrier ? config.barrier : undefined,
@@ -601,15 +625,14 @@ export class TradingEngine {
       if (response.buy) {
         this.activeContracts.set(response.buy.contract_id, {
           signal,
-          stake: adjustedStake,
+          stake: stake,
           purchaseTime: Date.now(),
         });
 
-        console.log(`✅ Trade executed: ${response.buy.contract_id}`);
-        this.startCooldown(8000); // 8s cooldown
+        console.log(`✅ Contract ${contractIndex} executed: ${response.buy.contract_id}`);
       }
     } catch (error: any) {
-      console.error('❌ Trade execution failed:', error.message);
+      console.error(`❌ Contract ${contractIndex} failed:`, error.message);
     }
   }
 
